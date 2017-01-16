@@ -1,0 +1,108 @@
+#!/usr/bin/python3
+#
+# eos-dropbox-app: launcher script to launch Dropbox
+#
+# Copyright (C) 2017 Endless Mobile, Inc.
+# Authors:
+#  Mario Sanchez Prada <mario@endlessm.com>
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+
+import argparse
+import json
+import logging
+import os
+import subprocess
+import sys
+
+from gi.repository import Gio
+from gi.repository import GLib
+
+
+DROPBOX_CONFIG = "~/.dropbox/info.json"
+DROPBOX_LAUNCHER  = "/app/extra/.dropbox-dist/dropboxd"
+DROPBOX_DEFAULT_DIR  = "~/Dropbox"
+
+
+def launch_dropbox_daemon():
+    logging.info("Launching Dropbox's daemon at {}...".format(DROPBOX_LAUNCHER))
+    subprocess.Popen([DROPBOX_LAUNCHER])
+
+
+def get_dropbox_directory():
+    config_path = os.path.expanduser(DROPBOX_DEFAULT_DIR)
+
+    logging.info("Looking for the configured Dropbox directory...")
+    with open(os.path.expanduser(DROPBOX_CONFIG), 'r') as config:
+        data = config.read()
+
+        try:
+            json_data = json.loads(data)
+        except json.JSONDecodeError as e:
+            logging.warning('Error loading JSON data from {}: {}'.format(DROPBOX_CONFIG, str(e)))
+
+        try:
+            config_path = os.path.expanduser(json_data['personal']['path'])
+        except KeyError:
+            logging.warning('Could not find Dropbox directory')
+
+    logging.info("Using Dropbox directory: {}".format(config_path))
+    return config_path
+
+
+def open_dropbox_directory():
+    directory = get_dropbox_directory()
+    if not os.path.isdir(directory):
+        logging.warning("{} is not a directory".format(directory))
+        return
+
+    bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+    proxy = Gio.DBusProxy.new_sync(bus, Gio.DBusProxyFlags.NONE,
+                                   None,
+                                   'org.freedesktop.portal.Desktop',
+                                   '/org/freedesktop/portal/desktop',
+                                   'org.freedesktop.portal.OpenURI',
+                                   None)
+
+    uri = "file://{}".format(os.path.expanduser(DROPBOX_DEFAULT_DIR))
+
+    logging.info("Opening Dropbox directory at {}...".format(uri))
+    result = proxy.OpenURI('(ssa{sv})',
+                           '',                          # Parent window ID
+                           uri,                         # URI
+                           GLib.Variant('a{sv}', None)) # Options
+    if result is None:
+        logging.warning("Could not launch the OpenURI portal for {}".format())
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--debug", dest="debug", action="store_true")
+
+    parsed_args = parser.parse_args()
+    if parsed_args.debug:
+        logging.basicConfig(level=logging.INFO)
+
+    # XXX: This launches a new daemon instance each time which is not ideal
+    # and should be fixed. See https://phabricator.endlessm.com/T15115.
+    #
+    # Simple solutions like checking the ~/.dropbox/dropbox.pid are unfortunately
+    # not possible since this runs inside the Flatpak sandbox but a way to detect
+    # whether this is already running should be implemented in the future.
+    logging.info("Attempting to run eos-dropbox-app launcher...")
+    launch_dropbox_daemon()
+
+    logging.info("Attempting to open Dropbox directory...")
+    open_dropbox_directory()

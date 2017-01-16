@@ -1,0 +1,16 @@
+Source: eos-dropbox-app
+Section: admin
+Priority: standard
+Maintainer: Mario Sanchez Prada <mario@endlessm.com>
+Build-Depends: debhelper (>= 9),
+	dh-autoreconf
+Standards-Version: 3.8.0
+Homepage: http://www.endlessm.com
+XCBS-EOS-AppId: eos-dropbox-app
+
+Package: eos-dropbox-app
+Architecture: amd64
+Depends: ${misc:Depends}
+Description: Dropbox launcher script
+ Small package to contain the "client side" bits of the
+ Dropbox flatpak application (i.e. launcher script).
