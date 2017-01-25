@@ -21,6 +21,7 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 import argparse
+import glob
 import json
 import logging
 import os
@@ -46,6 +47,12 @@ def get_default_dropbox_directory():
 
     if os.path.isdir(default_dir):
         return default_dir
+
+    # No 'Dropbox' directory found, our last attempt will be to look for a Dropbox
+    # team folder, used in 'business' accounts (e.g. 'Dropbox (Endless Team)')
+    team_dir = glob.glob(default_dir + ' (*)')
+    if team_dir:
+        return team_dir[0]
 
     # If no Dropbox folder found, that means that the user has not
     # configured Dropbox yet, so there's not much we can do now
