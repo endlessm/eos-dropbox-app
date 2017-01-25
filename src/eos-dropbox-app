@@ -41,32 +41,61 @@ def launch_dropbox_daemon():
     subprocess.Popen([DROPBOX_LAUNCHER])
 
 
+def get_default_dropbox_directory():
+    default_dir = os.path.expanduser(DROPBOX_DEFAULT_DIR)
+
+    if os.path.isdir(default_dir):
+        return default_dir
+
+    # If no Dropbox folder found, that means that the user has not
+    # configured Dropbox yet, so there's not much we can do now
+    return None
+
+
 def get_dropbox_directory():
-    dropbox_dir = os.path.expanduser(DROPBOX_DEFAULT_DIR)
+    dropbox_dir = None
+    config_path = os.path.expanduser(DROPBOX_CONFIG)
 
-    logging.info("Looking for the configured Dropbox directory...")
-    with open(os.path.expanduser(DROPBOX_CONFIG), 'r') as config:
+    logging.info("Looking for Dropbox configuration...")
+    if not os.path.exists(config_path):
+        logging.info('Dropbox configuration not found')
+        return None
+
+    with open(config_path, 'r') as config:
+        logging.info('Found Dropbox configuration at {}'.format(config_path))
+
         data = config.read()
-
         try:
             json_data = json.loads(data)
-        except json.JSONDecodeError as e:
+            try:
+                dropbox_dir = os.path.expanduser(json_data['personal']['path'])
+                logging.info('Found configured Dropbox directory at {}'.format(dropbox_dir))
+            except KeyError:
+                logging.warning('Could not find Dropbox directory in user\'s configuration')
+
+        except ValueError as e:
             logging.warning('Error loading JSON data from {}: {}'.format(DROPBOX_CONFIG, str(e)))
 
-        try:
-            dropbox_dir = os.path.expanduser(json_data['personal']['path'])
-        except KeyError:
-            logging.warning('Could not find Dropbox directory')
+    if not dropbox_dir:
+        logging.warning('Could not find a valid Dropbox directory in the configuration. Falling back to defaults...')
+        dropbox_dir = get_default_dropbox_directory()
 
-    logging.info("Using Dropbox directory: {}".format(dropbox_dir))
     return dropbox_dir
+
+
+def exitOnError(message):
+    logging.error(message)
+    sys.exit(1)
 
 
 def open_dropbox_directory():
     directory = get_dropbox_directory()
-    if not os.path.isdir(directory):
-        logging.warning("{} is not a directory".format(directory))
+
+    if not directory:
+        logging.warning('User has not configured Dropbox yet')
         return
+    elif not os.path.isdir(directory):
+        exitOnError("{} is not a directory!".format(directory))
 
     bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
     proxy = Gio.DBusProxy.new_sync(bus, Gio.DBusProxyFlags.NONE,
