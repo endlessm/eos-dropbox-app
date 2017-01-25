@@ -127,7 +127,7 @@ def open_dropbox_directory():
                                    'org.freedesktop.portal.OpenURI',
                                    None)
 
-    uri = "file://{}".format(os.path.expanduser(DROPBOX_DEFAULT_DIR))
+    uri = "file://{}".format(os.path.expanduser(directory))
 
     logging.info("Opening Dropbox directory at {}...".format(uri))
     result = proxy.OpenURI('(ssa{sv})',
