@@ -42,7 +42,7 @@ def launch_dropbox_daemon():
 
 
 def get_dropbox_directory():
-    config_path = os.path.expanduser(DROPBOX_DEFAULT_DIR)
+    dropbox_dir = os.path.expanduser(DROPBOX_DEFAULT_DIR)
 
     logging.info("Looking for the configured Dropbox directory...")
     with open(os.path.expanduser(DROPBOX_CONFIG), 'r') as config:
@@ -54,12 +54,12 @@ def get_dropbox_directory():
             logging.warning('Error loading JSON data from {}: {}'.format(DROPBOX_CONFIG, str(e)))
 
         try:
-            config_path = os.path.expanduser(json_data['personal']['path'])
+            dropbox_dir = os.path.expanduser(json_data['personal']['path'])
         except KeyError:
             logging.warning('Could not find Dropbox directory')
 
-    logging.info("Using Dropbox directory: {}".format(config_path))
-    return config_path
+    logging.info("Using Dropbox directory: {}".format(dropbox_dir))
+    return dropbox_dir
 
 
 def open_dropbox_directory():
