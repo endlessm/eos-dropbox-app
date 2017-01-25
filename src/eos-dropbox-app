@@ -119,23 +119,24 @@ def open_dropbox_directory():
     elif not os.path.isdir(directory):
         exitOnError("{} is not a directory!".format(directory))
 
-    bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
-    proxy = Gio.DBusProxy.new_sync(bus, Gio.DBusProxyFlags.NONE,
-                                   None,
-                                   'org.freedesktop.portal.Desktop',
-                                   '/org/freedesktop/portal/desktop',
-                                   'org.freedesktop.portal.OpenURI',
-                                   None)
-
     uri = "file://{}".format(os.path.expanduser(directory))
 
-    logging.info("Opening Dropbox directory at {}...".format(uri))
-    result = proxy.OpenURI('(ssa{sv})',
-                           '',                          # Parent window ID
-                           uri,                         # URI
-                           GLib.Variant('a{sv}', None)) # Options
-    if result is None:
-        logging.warning("Could not launch the OpenURI portal for {}".format())
+    try:
+        bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+        proxy = Gio.DBusProxy.new_sync(bus, Gio.DBusProxyFlags.NONE,
+                                       None,
+                                       'org.freedesktop.portal.Desktop',
+                                       '/org/freedesktop/portal/desktop',
+                                       'org.freedesktop.portal.OpenURI',
+                                       None)
+
+        logging.info("Opening Dropbox directory at {}...".format(uri))
+        proxy.OpenURI('(ssa{sv})',
+                      '',                          # Parent window ID
+                      uri,                         # URI
+                      GLib.Variant('a{sv}', None)) # Options
+    except GLib.Error as e:
+        exitOnError("Could not launch the OpenURI portal for {}: {}".format(uri, e.message))
 
 
 if __name__ == '__main__':
