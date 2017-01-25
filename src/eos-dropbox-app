@@ -37,11 +37,6 @@ DROPBOX_LAUNCHER  = "/app/extra/.dropbox-dist/dropboxd"
 DROPBOX_DEFAULT_DIR  = "~/Dropbox"
 
 
-def launch_dropbox_daemon():
-    logging.info("Launching Dropbox's daemon at {}...".format(DROPBOX_LAUNCHER))
-    subprocess.Popen([DROPBOX_LAUNCHER])
-
-
 def get_default_dropbox_directory():
     default_dir = os.path.expanduser(DROPBOX_DEFAULT_DIR)
 
@@ -105,38 +100,48 @@ def get_dropbox_directory():
     return dropbox_dir
 
 
-def exitOnError(message):
-    logging.error(message)
-    sys.exit(1)
+class DropboxLauncher():
 
+    def run(self):
+        self._launch_dropbox_daemon()
+        self._open_dropbox_directory()
 
-def open_dropbox_directory():
-    directory = get_dropbox_directory()
+    def _exitOnError(self, message):
+        logging.error(message)
+        sys.exit(1)
 
-    if not directory:
-        logging.warning('User has not configured Dropbox yet')
-        return
-    elif not os.path.isdir(directory):
-        exitOnError("{} is not a directory!".format(directory))
+    def _open_dropbox_directory(self):
+        directory = get_dropbox_directory()
+        logging.info("Attempting to open Dropbox directory at {}...".format(directory))
 
-    uri = "file://{}".format(os.path.expanduser(directory))
+        if not directory:
+            logging.warning('User has not configured Dropbox yet')
+            return
+        elif not os.path.isdir(directory):
+            self._exitOnError("{} is not a directory!".format(directory))
 
-    try:
-        bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
-        proxy = Gio.DBusProxy.new_sync(bus, Gio.DBusProxyFlags.NONE,
-                                       None,
-                                       'org.freedesktop.portal.Desktop',
-                                       '/org/freedesktop/portal/desktop',
-                                       'org.freedesktop.portal.OpenURI',
-                                       None)
+        uri = "file://{}".format(os.path.expanduser(directory))
 
-        logging.info("Opening Dropbox directory at {}...".format(uri))
-        proxy.OpenURI('(ssa{sv})',
-                      '',                          # Parent window ID
-                      uri,                         # URI
-                      GLib.Variant('a{sv}', None)) # Options
-    except GLib.Error as e:
-        exitOnError("Could not launch the OpenURI portal for {}: {}".format(uri, e.message))
+        try:
+            bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+            proxy = Gio.DBusProxy.new_sync(bus, Gio.DBusProxyFlags.NONE,
+                                           None,
+                                           'org.freedesktop.portal.Desktop',
+                                           '/org/freedesktop/portal/desktop',
+                                           'org.freedesktop.portal.OpenURI',
+                                           None)
+
+            logging.info("Opening Dropbox directory at {}...".format(uri))
+            proxy.OpenURI('(ssa{sv})',
+                          '',                          # Parent window ID
+                          uri,                         # URI
+                          GLib.Variant('a{sv}', None)) # Options
+        except GLib.Error as e:
+            self._exitOnError("Could not launch the OpenURI portal for {}: {}".format(uri, e.message))
+
+    def _launch_dropbox_daemon(self):
+        logging.info("Launching Dropbox's daemon at {}...".format(DROPBOX_LAUNCHER))
+        subprocess.Popen([DROPBOX_LAUNCHER])
 
 
 if __name__ == '__main__':
@@ -147,14 +152,4 @@ if __name__ == '__main__':
     if parsed_args.debug:
         logging.basicConfig(level=logging.INFO)
 
-    # XXX: This launches a new daemon instance each time which is not ideal
-    # and should be fixed. See https://phabricator.endlessm.com/T15115.
-    #
-    # Simple solutions like checking the ~/.dropbox/dropbox.pid are unfortunately
-    # not possible since this runs inside the Flatpak sandbox but a way to detect
-    # whether this is already running should be implemented in the future.
-    logging.info("Attempting to run eos-dropbox-app launcher...")
-    launch_dropbox_daemon()
-
-    logging.info("Attempting to open Dropbox directory...")
-    open_dropbox_directory()
+    DropboxLauncher().run()
