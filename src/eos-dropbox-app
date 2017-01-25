@@ -102,12 +102,17 @@ def get_dropbox_directory():
 
 class DropboxLauncher():
 
+    def __init__(self):
+        self._mainloop = GLib.MainLoop()
+
     def run(self):
         self._launch_dropbox_daemon()
         self._open_dropbox_directory()
+        self._mainloop.run()
 
     def _exitOnError(self, message):
         logging.error(message)
+        self._mainloop.quit()
         sys.exit(1)
 
     def _open_dropbox_directory(self):
@@ -132,12 +137,42 @@ class DropboxLauncher():
                                            None)
 
             logging.info("Opening Dropbox directory at {}...".format(uri))
-            proxy.OpenURI('(ssa{sv})',
-                          '',                          # Parent window ID
-                          uri,                         # URI
-                          GLib.Variant('a{sv}', None)) # Options
+            handle = proxy.OpenURI('(ssa{sv})',
+                                   '',                          # Parent window ID
+                                   uri,                         # URI
+                                   GLib.Variant('a{sv}', None)) # Options
+
+            # The OpenURI method returns a handle to a 'request object', which stays
+            # alive for the duration of the user interaction related to the method call,
+            # so we connect to its Response signal to know when it's all over.
+            bus.signal_subscribe('org.freedesktop.portal.Desktop',
+                                 'org.freedesktop.portal.Request',
+                                 'Response',
+                                 handle,
+                                 None,
+                                 Gio.DBusSignalFlags.NO_MATCH_RULE,
+                                 self._responseReceived)
+
         except GLib.Error as e:
             self._exitOnError("Could not launch the OpenURI portal for {}: {}".format(uri, e.message))
+
+    def _responseReceived(self, connection, sender, path, interface, signal, params):
+        # Format string for the Response signal is 'ua{sv}', but we are
+        # only interested in the first parameter here (response code).
+        #
+        # Response code values:
+        #  0: Success
+        #  1: User cancelled action (e.g. Canceled the App Chooser dialog).
+        #  2: Error
+        (response_code, results) = params.unpack()
+        if response_code == 0:
+            logging.info('OpenURI portal: success!')
+        elif response_code == 1:
+            logging.info('OpenURI portal: cancelled by the user')
+        elif response_code == 2:
+            logging.warning('OpenURI portal: An error happened')
+
+        self._mainloop.quit()
 
     def _launch_dropbox_daemon(self):
         logging.info("Launching Dropbox's daemon at {}...".format(DROPBOX_LAUNCHER))
