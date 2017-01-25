@@ -104,11 +104,26 @@ class DropboxLauncher():
 
     def __init__(self):
         self._mainloop = GLib.MainLoop()
+        self._already_running = False
 
     def run(self):
+        Gio.bus_own_name(Gio.BusType.SESSION,
+                         "com.dropbox.Client",
+                         Gio.BusNameOwnerFlags.NONE,
+                         None, # Bus Acquired callback
+                         self._name_acquired,
+                         self._name_lost)
+        self._mainloop.run()
+
+    def _name_acquired(self, *args):
+        logging.info("No instance of dropbox already running")
         self._launch_dropbox_daemon()
         self._open_dropbox_directory()
-        self._mainloop.run()
+
+    def _name_lost(self, *args):
+        logging.info("Another instance of dropbox is already running")
+        self._already_running = True
+        self._open_dropbox_directory()
 
     def _exitOnError(self, message):
         logging.error(message)
@@ -172,7 +187,11 @@ class DropboxLauncher():
         elif response_code == 2:
             logging.warning('OpenURI portal: An error happened')
 
-        self._mainloop.quit()
+        if self._already_running:
+            # Dropbox launcher already running as a different process,
+            # so we can quit here after having handled the URI request
+            logging.info('Not the main launcher instance. Exiting')
+            self._mainloop.quit()
 
     def _launch_dropbox_daemon(self):
         logging.info("Launching Dropbox's daemon at {}...".format(DROPBOX_LAUNCHER))
