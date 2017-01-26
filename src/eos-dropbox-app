@@ -32,9 +32,9 @@ from gi.repository import Gio
 from gi.repository import GLib
 
 
-DROPBOX_CONFIG = "~/.dropbox/info.json"
-DROPBOX_LAUNCHER  = "/app/extra/.dropbox-dist/dropboxd"
-DROPBOX_DEFAULT_DIR  = "~/Dropbox"
+DROPBOX_CONFIG = '~/.dropbox/info.json'
+DROPBOX_LAUNCHER  = '/app/extra/.dropbox-dist/dropboxd'
+DROPBOX_DEFAULT_DIR  = '~/Dropbox'
 
 
 def get_default_dropbox_directory():
@@ -60,11 +60,11 @@ def get_dropbox_directory():
 
     logging.info("Looking for Dropbox configuration...")
     if not os.path.exists(config_path):
-        logging.info('Dropbox configuration not found')
+        logging.info("Dropbox configuration not found")
         return None
 
     with open(config_path, 'r') as config:
-        logging.info('Found Dropbox configuration at {}'.format(config_path))
+        logging.info("Found Dropbox configuration at {}".format(config_path))
 
         path = None
         account_type = None
@@ -73,7 +73,7 @@ def get_dropbox_directory():
         try:
             json_data = json.loads(data)
         except ValueError as e:
-            logging.warning('Error loading JSON data from {}: {}'.format(DROPBOX_CONFIG, str(e)))
+            logging.warning("Error loading JSON data from {}: {}".format(DROPBOX_CONFIG, str(e)))
 
         # Search for valid user configuration (containing 'path')
         # and for the type of account (for logging purposes)
@@ -86,15 +86,15 @@ def get_dropbox_directory():
         if path:
             try:
                 dropbox_dir = os.path.expanduser(path)
-                logging.info('Found configured Dropbox directory at {} ({} account)'
+                logging.info("Found configured Dropbox directory at {} ({} account)"
                              .format(dropbox_dir, account_type))
             except KeyError:
-                logging.warning('Could not find Dropbox directory in user\'s configuration')
+                logging.warning("Could not find Dropbox directory in user's configuration")
         else:
-            logging.warning('Could not find user\'s configuration in Dropbox\'s configuration file')
+            logging.warning("Could not find user's configuration in Dropbox's configuration file")
 
     if not dropbox_dir:
-        logging.warning('Could not find a valid Dropbox directory in the configuration. Falling back to defaults...')
+        logging.warning("Could not find a valid Dropbox directory in the configuration. Falling back to defaults...")
         dropbox_dir = get_default_dropbox_directory()
 
     return dropbox_dir
@@ -108,7 +108,7 @@ class DropboxLauncher():
 
     def run(self):
         Gio.bus_own_name(Gio.BusType.SESSION,
-                         "com.dropbox.Client",
+                         'com.dropbox.Client',
                          Gio.BusNameOwnerFlags.NONE,
                          None, # Bus Acquired callback
                          self._name_acquired,
@@ -135,12 +135,12 @@ class DropboxLauncher():
         logging.info("Attempting to open Dropbox directory at {}...".format(directory))
 
         if not directory:
-            logging.warning('User has not configured Dropbox yet')
+            logging.warning("User has not configured Dropbox yet")
             return
         elif not os.path.isdir(directory):
             self._exitOnError("{} is not a directory!".format(directory))
 
-        uri = "file://{}".format(os.path.expanduser(directory))
+        uri = 'file://{}'.format(os.path.expanduser(directory))
 
         try:
             bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
@@ -181,16 +181,16 @@ class DropboxLauncher():
         #  2: Error
         (response_code, results) = params.unpack()
         if response_code == 0:
-            logging.info('OpenURI portal: success!')
+            logging.info("OpenURI portal: success!")
         elif response_code == 1:
-            logging.info('OpenURI portal: cancelled by the user')
+            logging.info("OpenURI portal: cancelled by the user")
         elif response_code == 2:
-            logging.warning('OpenURI portal: An error happened')
+            logging.warning("OpenURI portal: An error happened")
 
         if self._already_running:
             # Dropbox launcher already running as a different process,
             # so we can quit here after having handled the URI request
-            logging.info('Not the main launcher instance. Exiting')
+            logging.info("Not the main launcher instance. Exiting")
             self._mainloop.quit()
 
     def _launch_dropbox_daemon(self):
@@ -200,7 +200,7 @@ class DropboxLauncher():
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument("--debug", dest="debug", action="store_true")
+    parser.add_argument('--debug', dest='debug', action='store_true')
 
     parsed_args = parser.parse_args()
     if parsed_args.debug:
