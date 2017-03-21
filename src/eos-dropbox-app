@@ -121,8 +121,13 @@ class DropboxLauncher():
         self._open_dropbox_directory()
 
     def _name_lost(self, *args):
-        logging.info("Another instance of dropbox is already running")
-        self._already_running = True
+        if not get_dropbox_directory():
+            logging.info("Another instance of dropbox is already running but no "
+                         "Dropbox folder was found; launching the daemon again")
+            self._launch_dropbox_daemon()
+        else:
+            logging.info("Another instance of dropbox is already running")
+            self._already_running = True
         self._open_dropbox_directory()
 
     def _exitOnError(self, message):
