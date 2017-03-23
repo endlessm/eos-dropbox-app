@@ -109,6 +109,7 @@ class DropboxLauncher():
         self._dir_monitor = None
         self._bus_owner_id = 0
         self._quit_if_name_lost = False
+        self._daemon = None
 
     def run(self):
         self._try_own_bus_name()
@@ -142,7 +143,7 @@ class DropboxLauncher():
     def _name_lost(self, *args):
         if self._quit_if_name_lost:
             logging.info("Lost the DBus name ownership; quitting...")
-            self._mainloop.quit()
+            self._quit()
             return
 
         if not get_dropbox_directory():
@@ -152,12 +153,17 @@ class DropboxLauncher():
         else:
             logging.info("Another instance of dropbox is already running")
             self._already_running = True
-            self._open_dropbox_directory()
+            self._open_dropbox_when_created()
 
     def _exitOnError(self, message):
         logging.error(message)
+        self._quit(1)
+
+    def _quit(self, retcode=0):
+        if self._daemon:
+            self._daemon.terminate()
         self._mainloop.quit()
-        sys.exit(1)
+        sys.exit(retcode)
 
     def _open_dropbox_directory(self):
         directory = get_dropbox_directory()
@@ -220,7 +226,7 @@ class DropboxLauncher():
             # Dropbox launcher already running as a different process,
             # so we can quit here after having handled the URI request
             logging.info("Not the main launcher instance. Exiting")
-            self._mainloop.quit()
+            self._quit()
 
     def _launch_dropbox(self):
         self._launch_dropbox_daemon()
@@ -233,7 +239,10 @@ class DropboxLauncher():
 
     def _launch_dropbox_daemon(self):
         logging.info("Launching Dropbox's daemon at {}...".format(DROPBOX_LAUNCHER))
-        subprocess.Popen([DROPBOX_LAUNCHER])
+        # Safety check just in case this is called more than once
+        if self._daemon:
+            self._daemon.terminate()
+        self._daemon = subprocess.Popen([DROPBOX_LAUNCHER])
 
     def _on_config_changed(self, monitor, file_obj, other_file, event_type):
         logging.info("Config file monitor {}: {}".format(file_obj.get_path(), event_type))
