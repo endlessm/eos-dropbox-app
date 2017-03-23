@@ -107,25 +107,48 @@ class DropboxLauncher():
         self._already_running = False
         self._config_monitor = None
         self._dir_monitor = None
+        self._bus_owner_id = 0
+        self._quit_if_name_lost = False
 
     def run(self):
-        Gio.bus_own_name(Gio.BusType.SESSION,
-                         'com.dropbox.Client',
-                         Gio.BusNameOwnerFlags.NONE,
-                         None, # Bus Acquired callback
-                         self._name_acquired,
-                         self._name_lost)
+        self._try_own_bus_name()
         self._mainloop.run()
+
+    def _try_own_bus_name(self, replace=False):
+        if self._bus_owner_id != 0:
+            Gio.bus_unown_name(self._bus_owner_id)
+
+        flags = Gio.BusNameOwnerFlags.ALLOW_REPLACEMENT
+        if replace:
+            flags |= Gio.BusNameOwnerFlags.REPLACE
+            self._quit_if_name_lost = True
+            logging.info("Trying to own the dropbox dbus name (this time "
+                         "replacing existing ones)...")
+        else:
+            logging.info("Trying to own the dropbox dbus name...")
+
+        self._bus_owner_id = Gio.bus_own_name(Gio.BusType.SESSION,
+                                              'com.dropbox.Client',
+                                              flags,
+                                              None, # Bus Acquired callback
+                                              self._name_acquired,
+                                              self._name_lost)
 
     def _name_acquired(self, *args):
         logging.info("No instance of dropbox already running")
+        self._quit_if_name_lost = True
         self._launch_dropbox()
 
     def _name_lost(self, *args):
+        if self._quit_if_name_lost:
+            logging.info("Lost the DBus name ownership; quitting...")
+            self._mainloop.quit()
+            return
+
         if not get_dropbox_directory():
             logging.info("Another instance of dropbox is already running but no "
                          "Dropbox folder was found; launching the daemon again")
-            self._launch_dropbox()
+            self._try_own_bus_name(replace=True)
         else:
             logging.info("Another instance of dropbox is already running")
             self._already_running = True
