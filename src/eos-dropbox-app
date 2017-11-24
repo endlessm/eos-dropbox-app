@@ -175,7 +175,12 @@ class DropboxLauncher():
         elif not os.path.isdir(directory):
             self._exitOnError("{} is not a directory!".format(directory))
 
-        uri = 'file://{}'.format(os.path.expanduser(directory))
+        path = os.path.expanduser(directory)
+        try:
+            # We need to pass an Unix FD to pass to the OpenFile method
+            fd = os.open(path, os.O_PATH | os.O_CLOEXEC)
+        except os.FileNotFoundError as e:
+            self._exitOnError("Can't find directory at {}: {}".format(path, e.strerror))
 
         try:
             bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
@@ -186,11 +191,13 @@ class DropboxLauncher():
                                            'org.freedesktop.portal.OpenURI',
                                            None)
 
-            logging.info("Opening Dropbox directory at {}...".format(uri))
-            handle = proxy.OpenURI('(ssa{sv})',
-                                   '',                          # Parent window ID
-                                   uri,                         # URI
-                                   GLib.Variant('a{sv}', None)) # Options
+            logging.info("Opening Dropbox directory at {}...".format(path))
+            handle = proxy.call_with_unix_fd_list('OpenFile',
+                                                  GLib.Variant('(sha{sv})',
+                                                               ('', 0, GLib.Variant('a{sv}', None))),
+                                                  Gio.DBusCallFlags.NONE,
+                                                  -1,
+                                                  Gio.UnixFDList.new_from_array([fd]))
 
             # The OpenURI method returns a handle to a 'request object', which stays
             # alive for the duration of the user interaction related to the method call,
