@@ -182,36 +182,47 @@ class DropboxLauncher():
         except os.FileNotFoundError as e:
             self._exitOnError("Can't find directory at {}: {}".format(path, e.strerror))
 
+        bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+        proxy = Gio.DBusProxy.new_sync(bus, Gio.DBusProxyFlags.NONE,
+                                       None,
+                                       'org.freedesktop.portal.Desktop',
+                                       '/org/freedesktop/portal/desktop',
+                                       'org.freedesktop.portal.OpenURI',
+                                       None)
         try:
-            bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
-            proxy = Gio.DBusProxy.new_sync(bus, Gio.DBusProxyFlags.NONE,
-                                           None,
-                                           'org.freedesktop.portal.Desktop',
-                                           '/org/freedesktop/portal/desktop',
-                                           'org.freedesktop.portal.OpenURI',
-                                           None)
-
             logging.info("Opening Dropbox directory at {}...".format(path))
-            handle = proxy.call_with_unix_fd_list('OpenFile',
-                                                  GLib.Variant('(sha{sv})',
-                                                               ('', 0, GLib.Variant('a{sv}', None))),
-                                                  Gio.DBusCallFlags.NONE,
-                                                  -1,
-                                                  Gio.UnixFDList.new_from_array([fd]))
+            result, _out_fd_list = proxy.call_with_unix_fd_list_sync('OpenFile',
+                                                                     GLib.Variant('(sha{sv})',
+                                                                                  ('', 0, None)),
+                                                                     Gio.DBusCallFlags.NONE,
+                                                                     -1,
+                                                                     Gio.UnixFDList.new_from_array([fd]),
+                                                                     None)
+            handle, = result.unpack()
 
-            # The OpenURI method returns a handle to a 'request object', which stays
-            # alive for the duration of the user interaction related to the method call,
-            # so we connect to its Response signal to know when it's all over.
-            bus.signal_subscribe('org.freedesktop.portal.Desktop',
-                                 'org.freedesktop.portal.Request',
-                                 'Response',
-                                 handle,
-                                 None,
-                                 Gio.DBusSignalFlags.NO_MATCH_RULE,
-                                 self._responseReceived)
+        except GLib.GError as e:
+            if not e.matches(Gio.dbus_error_quark(), Gio.DBusError.UNKNOWN_METHOD):
+                logging.info("Could not open directory {}: {}".format(path, e.message))
+                raise
 
-        except GLib.Error as e:
-            self._exitOnError("Could not launch the OpenURI portal for {}: {}".format(uri, e.message))
+            # This is required for compatibility with xdg-desktop-portal < 0.6, for
+            # installations that might have updated the DropBox app before the OS.
+            logging.info("OpenFile method not available, falling back to OpenURI...")
+            handle = proxy.OpenURI('(ssa{sv})',
+                                   '',                       # Parent window ID
+                                   "file://{}".format(path), # URI
+                                   None)                     # Options
+
+        # OpenURI methods returns a handle to a 'request object', which stays
+        # alive for the duration of the user interaction related to the method
+        # call, so we connect to its Response signal to know when it's all over.
+        bus.signal_subscribe('org.freedesktop.portal.Desktop',
+                             'org.freedesktop.portal.Request',
+                             'Response',
+                             handle,
+                             None,
+                             Gio.DBusSignalFlags.NO_MATCH_RULE,
+                             self._responseReceived)
 
     def _responseReceived(self, connection, sender, path, interface, signal, params):
         # Format string for the Response signal is 'ua{sv}', but we are
