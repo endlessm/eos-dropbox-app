@@ -10,7 +10,8 @@ XCBS-EOS-AppId: eos-dropbox-app
 
 Package: eos-dropbox-app
 Architecture: amd64
-Depends: ${misc:Depends}
+Depends: ${misc:Depends},
+	python3-psutil
 Description: Dropbox launcher script
  Small package to contain the "client side" bits of the
  Dropbox flatpak application (i.e. launcher script).
