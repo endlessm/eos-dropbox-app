@@ -179,7 +179,7 @@ class DropboxLauncher():
         try:
             # We need to pass an Unix FD to pass to the OpenFile method
             fd = os.open(path, os.O_PATH | os.O_CLOEXEC)
-        except os.FileNotFoundError as e:
+        except FileNotFoundError as e:
             self._exitOnError("Can't find directory at {}: {}".format(path, e.strerror))
 
         bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
