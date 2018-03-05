@@ -25,8 +25,11 @@ import glob
 import json
 import logging
 import os
+import psutil
 import subprocess
 import sys
+import threading
+
 
 from gi.repository import Gio
 from gi.repository import GLib
@@ -35,6 +38,25 @@ from gi.repository import GLib
 DROPBOX_CONFIG = '~/.dropbox/info.json'
 DROPBOX_LAUNCHER  = '/app/extra/.dropbox-dist/dropboxd'
 DROPBOX_DEFAULT_DIR  = '~/Dropbox'
+DROPBOX_DAEMON_NAME  = 'dropbox'
+
+
+def get_processes_by_name(name):
+    "Return a list of processes matching 'name'."
+    process_list = []
+    for p in psutil.process_iter(attrs=['name']):
+        if p.info['name'] == name:
+            process_list.append(p)
+    return process_list
+
+
+def find_dropbox_daemon():
+    matching_processes = get_processes_by_name(DROPBOX_DAEMON_NAME)
+    if len(matching_processes) > 0:
+        # There is only one process, so pick the first element in the list
+        return matching_processes[0]
+
+    return None
 
 
 def get_default_dropbox_directory():
@@ -104,11 +126,17 @@ class DropboxLauncher():
 
     def __init__(self):
         self._mainloop = GLib.MainLoop()
-        self._already_running = False
         self._config_monitor = None
         self._dir_monitor = None
         self._bus_owner_id = 0
         self._quit_if_name_lost = False
+
+        # Shell script provider by Dropbox as the unified entry
+        # point to launch the daemon. (class: subprocess.Popen).
+        self._launcher = None
+
+        # The actual daemon provided by Dropbox that will take over
+        # after the launcher is invoked (class: psutil.Popen).
         self._daemon = None
 
     def run(self):
@@ -152,7 +180,6 @@ class DropboxLauncher():
             self._try_own_bus_name(replace=True)
         else:
             logging.info("Another instance of dropbox is already running")
-            self._already_running = True
             self._open_dropbox_when_created()
 
     def _exitOnError(self, message):
@@ -160,8 +187,11 @@ class DropboxLauncher():
         self._quit(1)
 
     def _quit(self, retcode=0):
+        if self._launcher:
+            self._launcher.terminate()
         if self._daemon:
             self._daemon.terminate()
+
         self._mainloop.quit()
         sys.exit(retcode)
 
@@ -240,7 +270,7 @@ class DropboxLauncher():
         elif response_code == 2:
             logging.warning("OpenURI portal: An error happened")
 
-        if self._already_running:
+        if not self._daemon:
             # Dropbox launcher already running as a different process,
             # so we can quit here after having handled the URI request
             logging.info("Not the main launcher instance. Exiting")
@@ -255,9 +285,38 @@ class DropboxLauncher():
         self._config_monitor = config.monitor(Gio.FileMonitorFlags.NONE)
         self._config_monitor.connect('changed', self._on_config_changed)
 
+    def _monitorDaemonThreadFunc(self):
+        logging.info("Monitoring daemon with PID {}...".format(self._daemon.pid))
+        self._daemon.wait()
+        self._daemon = None
+
+        logging.info("Dropbox daemon terminated. Quitting the app...")
+        self._quit()
+
     def _launch_dropbox_daemon(self):
         logging.info("Launching Dropbox's daemon at {}...".format(DROPBOX_LAUNCHER))
-        self._daemon = subprocess.Popen([DROPBOX_LAUNCHER])
+        try:
+            self._launcher = subprocess.Popen([DROPBOX_LAUNCHER])
+        except FileNotFoundError as e:
+            self._exitOnError("Can't find launcher script at {}".format(DROPBOX_LAUNCHER))
+
+        # We start the launcher from Dropbox, which internally gets
+        # replaced by another shell script which ends up launching
+        # the actual daemon, so we need to wait for it to finish.
+        self._launcher.wait()
+        self._launcher = None
+
+        # Now we can query the process for the actual daemon,
+        # which we need to monitor to know when to quit the app.
+        self._daemon = find_dropbox_daemon()
+        if self._daemon:
+            logging.info("Found Dropbox daemon with PID {}".format(self._daemon.pid))
+            # Monitor the daemon to make sure we finish the app when needed,
+            # but do it from a separate thread since psutil.wait() is blocking.
+            thread = threading.Thread(target=self._monitorDaemonThreadFunc)
+            thread.start()
+        else:
+            self._exitOnError("Could not find the PID for the dropbox binary. Quitting...")
 
     def _on_config_changed(self, monitor, file_obj, other_file, event_type):
         logging.info("Config file monitor {}: {}".format(file_obj.get_path(), event_type))
