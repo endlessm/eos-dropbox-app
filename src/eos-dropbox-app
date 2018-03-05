@@ -257,9 +257,6 @@ class DropboxLauncher():
 
     def _launch_dropbox_daemon(self):
         logging.info("Launching Dropbox's daemon at {}...".format(DROPBOX_LAUNCHER))
-        # Safety check just in case this is called more than once
-        if self._daemon:
-            self._daemon.terminate()
         self._daemon = subprocess.Popen([DROPBOX_LAUNCHER])
 
     def _on_config_changed(self, monitor, file_obj, other_file, event_type):
