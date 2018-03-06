@@ -25,6 +25,7 @@ import glob
 import json
 import logging
 import os
+import portallauncher
 import psutil
 import shutil
 import sys
@@ -196,6 +197,17 @@ class DropboxLauncher():
         self._mainloop.quit()
         sys.exit(retcode)
 
+    def _directory_handled(self, unused):
+        # If we own a launcher or a daemon, it means we are the main
+        # instance, and so we need to keep running until it terminates.
+        if self._launcher or self._daemon:
+            return
+
+        # Dropbox launcher already running as a different process,
+        # so we can quit here after having handled the URI request
+        logging.info("Not the main launcher instance. Exiting")
+        self._quit()
+
     def _open_dropbox_directory(self):
         directory = get_dropbox_directory()
         logging.info("Attempting to open Dropbox directory at {}...".format(directory))
@@ -207,75 +219,8 @@ class DropboxLauncher():
             self._exitOnError("{} is not a directory!".format(directory))
 
         path = os.path.expanduser(directory)
-        try:
-            # We need to pass an Unix FD to pass to the OpenFile method
-            fd = os.open(path, os.O_PATH | os.O_CLOEXEC)
-        except FileNotFoundError as e:
-            self._exitOnError("Can't find directory at {}: {}".format(path, e.strerror))
-
-        bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
-        proxy = Gio.DBusProxy.new_sync(bus, Gio.DBusProxyFlags.NONE,
-                                       None,
-                                       'org.freedesktop.portal.Desktop',
-                                       '/org/freedesktop/portal/desktop',
-                                       'org.freedesktop.portal.OpenURI',
-                                       None)
-        try:
-            logging.info("Opening Dropbox directory at {}...".format(path))
-            result, _out_fd_list = proxy.call_with_unix_fd_list_sync('OpenFile',
-                                                                     GLib.Variant('(sha{sv})',
-                                                                                  ('', 0, None)),
-                                                                     Gio.DBusCallFlags.NONE,
-                                                                     -1,
-                                                                     Gio.UnixFDList.new_from_array([fd]),
-                                                                     None)
-            handle, = result.unpack()
-
-        except GLib.GError as e:
-            if not e.matches(Gio.dbus_error_quark(), Gio.DBusError.UNKNOWN_METHOD):
-                logging.info("Could not open directory {}: {}".format(path, e.message))
-                raise
-
-            # This is required for compatibility with xdg-desktop-portal < 0.6, for
-            # installations that might have updated the DropBox app before the OS.
-            logging.info("OpenFile method not available, falling back to OpenURI...")
-            handle = proxy.OpenURI('(ssa{sv})',
-                                   '',                       # Parent window ID
-                                   "file://{}".format(path), # URI
-                                   None)                     # Options
-
-        # OpenURI methods returns a handle to a 'request object', which stays
-        # alive for the duration of the user interaction related to the method
-        # call, so we connect to its Response signal to know when it's all over.
-        bus.signal_subscribe('org.freedesktop.portal.Desktop',
-                             'org.freedesktop.portal.Request',
-                             'Response',
-                             handle,
-                             None,
-                             Gio.DBusSignalFlags.NO_MATCH_RULE,
-                             self._responseReceived)
-
-    def _responseReceived(self, connection, sender, path, interface, signal, params):
-        # Format string for the Response signal is 'ua{sv}', but we are
-        # only interested in the first parameter here (response code).
-        #
-        # Response code values:
-        #  0: Success
-        #  1: User cancelled action (e.g. Canceled the App Chooser dialog).
-        #  2: Error
-        (response_code, results) = params.unpack()
-        if response_code == 0:
-            logging.info("OpenURI portal: success!")
-        elif response_code == 1:
-            logging.info("OpenURI portal: cancelled by the user")
-        elif response_code == 2:
-            logging.warning("OpenURI portal: An error happened")
-
-        if not self._launcher and not self._daemon:
-            # Dropbox launcher already running as a different process,
-            # so we can quit here after having handled the URI request
-            logging.info("Not the main launcher instance. Exiting")
-            self._quit()
+        launcher = portallauncher.PortalLauncher(path, self._directory_handled, None)
+        launcher.run()
 
     def _launch_dropbox(self):
         self._disable_auto_updates()
