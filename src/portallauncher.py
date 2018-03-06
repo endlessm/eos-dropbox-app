@@ -24,6 +24,7 @@
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
+import errno
 import logging
 import os
 import sys
@@ -37,7 +38,12 @@ from gi.repository import GLib
 class PortalLauncher():
 
    def __init__(self, target, callback=None, data=None):
-      self._url = urlparse(target)
+      # Cache values commonly used
+      parsed_url = urlparse(target)
+      self._is_local_file = not parsed_url.scheme or parsed_url.scheme == 'file'
+      self._path = parsed_url.path
+      self._url = parsed_url.geturl()
+
       self._callback = callback
       self._data = data
 
@@ -51,13 +57,17 @@ class PortalLauncher():
 
    def run(self):
       handle = None
-      if not self._url.scheme or self._url.scheme == 'file':
+      if self._is_local_file:
+         if not os.path.isabs(self._path):
+            logging.error("Could not open non-absolute path {}".format(self._path))
+            raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), self._path)
+
          try:
             logging.info('Detected file/URI pointing to a local path. Using OpenFile method...')
             handle = self._run_open_file_method()
          except GLib.GError as e:
             if not e.matches(Gio.dbus_error_quark(), Gio.DBusError.UNKNOWN_METHOD):
-               logging.error("Could not open URL {}: {}".format(self._url.geturl(), e.message))
+               logging.error("Could not open file at {}: {}".format(self._path, e.message))
                raise
 
             logging.warning("OpenFile method not available, falling back to OpenURI...")
@@ -95,14 +105,12 @@ class PortalLauncher():
          callback(data)
 
    def _run_open_file_method(self):
-      path = self._url.path
-      logging.info("Opening PATH at {} (method: OpenURI.OpenFile)...".format(path))
-
+      logging.info("Opening path at {} (method: OpenURI.OpenFile)...".format(self._path))
       try:
          # We need to pass an Unix FD to pass to the OpenFile method
-         fd = os.open(path, os.O_PATH | os.O_CLOEXEC)
+         fd = os.open(self._path, os.O_PATH | os.O_CLOEXEC)
       except FileNotFoundError as e:
-         logging.error("Can't find directory at {}: {}".format(path, e.strerror))
+         logging.error("Can't find path at {}: {}".format(self._path, e.strerror))
          raise
 
       result, _out_fd_list = self._proxy.call_with_unix_fd_list_sync('OpenFile',
@@ -116,7 +124,7 @@ class PortalLauncher():
       return handle
 
    def _run_open_uri_method(self):
-      uri = self._url.geturl()
+      uri = self._url if not self._is_local_file else 'file://{}'.format(self._path)
       logging.info("Opening URI at {} (method: OpenURI.OpenURI)...".format(uri))
 
       return self._proxy.OpenURI('(ssa{sv})', '', uri, None)

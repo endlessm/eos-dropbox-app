@@ -34,7 +34,11 @@ def done_callback(mainloop):
 
 def open_url_on_idle(url, mainloop):
    launcher = portallauncher.PortalLauncher(url, done_callback, mainloop)
-   launcher.run()
+   try:
+      launcher.run()
+   except:
+      # Make sure to finish if something ever goes wrong
+      done_callback(mainloop)
 
 
 if __name__ == '__main__':
