@@ -26,6 +26,7 @@ import json
 import logging
 import os
 import psutil
+import shutil
 import subprocess
 import sys
 import threading
@@ -35,6 +36,7 @@ from gi.repository import Gio
 from gi.repository import GLib
 
 
+DROPBOX_AUTOUPDATE_DIR = '~/.dropbox-dist'
 DROPBOX_CONFIG = '~/.dropbox/info.json'
 DROPBOX_LAUNCHER  = '/app/extra/.dropbox-dist/dropboxd'
 DROPBOX_DEFAULT_DIR  = '~/Dropbox'
@@ -277,8 +279,27 @@ class DropboxLauncher():
             self._quit()
 
     def _launch_dropbox(self):
+        self._disable_auto_updates()
         self._launch_dropbox_daemon()
         self._setup_config_monitor()
+
+    def _disable_auto_updates(self):
+        # We ship updates to the dropbox app ourselves, so disable
+        # them by making the auto-update directory unreadable to
+        # prevent weird bugs from happening when mixing versions.
+        orig_dir = os.path.expanduser(DROPBOX_AUTOUPDATE_DIR)
+        if os.path.exists(orig_dir) and not os.access(orig_dir, os.W_OK):
+            logging.info("{} is already unaccessible. Nothing to do".format(orig_dir))
+            return
+
+        backup_dir = "{}.backup".format(orig_dir)
+        logging.info("Found auto-update directory in {}. Backing it up in {}".format(orig_dir, backup_dir))
+        if os.path.exists(backup_dir):
+            shutil.rmtree(backup_dir, ignore_errors=True)
+        shutil.move(orig_dir, backup_dir)
+
+        logging.info("Disabling auto-updates by making {} unwritable".format(orig_dir))
+        os.mkdir(orig_dir, mode=0)
 
     def _setup_config_monitor(self):
         config = Gio.File.new_for_path(os.path.expanduser(os.path.expanduser(DROPBOX_CONFIG)))
