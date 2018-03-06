@@ -24,6 +24,7 @@
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
+import errno
 import logging
 import os
 import sys
@@ -57,6 +58,10 @@ class PortalLauncher():
    def run(self):
       handle = None
       if self._is_local_file:
+         if not os.path.isabs(self._path):
+            logging.error("Could not open non-absolute path {}".format(self._path))
+            raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), self._path)
+
          try:
             logging.info('Detected file/URI pointing to a local path. Using OpenFile method...')
             handle = self._run_open_file_method()
