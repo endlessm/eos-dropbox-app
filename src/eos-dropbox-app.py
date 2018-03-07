@@ -240,7 +240,8 @@ class DropboxLauncher():
         logging.info("Found auto-update directory in {}. Backing it up in {}".format(orig_dir, backup_dir))
         if os.path.exists(backup_dir):
             shutil.rmtree(backup_dir, ignore_errors=True)
-        shutil.move(orig_dir, backup_dir)
+        if os.path.exists(orig_dir):
+            shutil.move(orig_dir, backup_dir)
 
         logging.info("Disabling auto-updates by making {} unwritable".format(orig_dir))
         os.mkdir(orig_dir, mode=0)
