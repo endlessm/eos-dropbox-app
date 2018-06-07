@@ -1,0 +1,104 @@
+{
+    "app-id": "com.dropbox.Client",
+    "runtime": "org.gnome.Platform",
+    "runtime-version": "3.28",
+    "sdk": "org.gnome.Sdk",
+    "command": "eos-dropbox-app",
+    "homepage": "https://www.dropbox.com",
+    "cleanup": [
+        "/lib/debug"
+    ],
+    "finish-args": [
+        /* X11 + XShm access */
+        "--share=ipc", "--socket=x11",
+        /* Sound and network access */
+        "--socket=pulseaudio",
+        "--share=network",
+        /* Access the Dropbox directory */
+        "--filesystem=home",
+        /* Required for menu items work */
+        "--filesystem=/tmp"
+    ],
+    "modules": [
+        {
+            "name": "eos-dropbox-app",
+            "buildsystem": "simple",
+            "sources": [
+                {
+                    "type": "file",
+                    "path": "eos-dropbox-app.py"
+                },
+                {
+                    "type": "file",
+                    "path": "com.dropbox.Client.appdata.xml"
+                },
+                {
+                    "type": "file",
+                    "path": "com.dropbox.Client.desktop"
+                },
+                {
+                    "type": "file",
+                    "path": "com.dropbox.Client_64.png"
+                }
+            ],
+            "build-commands": [
+                "install -d /app/bin",
+                "install eos-dropbox-app.py /app/bin/eos-dropbox-app",
+
+                "install -d /app/share/appdata",
+                "install -m644 com.dropbox.Client.appdata.xml /app/share/appdata/com.dropbox.Client.appdata.xml",
+
+                "install -d /app/share/applications",
+                "install -m644 com.dropbox.Client.desktop /app/share/applications/com.dropbox.Client.desktop",
+
+                "install -d /app/share/icons/hicolor/64x64/apps",
+                "install -m644 com.dropbox.Client_64.png /app/share/icons/hicolor/64x64/apps/com.dropbox.Client.png"
+            ]
+        },
+        {
+            "name": "python3-psutil",
+            "buildsystem": "simple",
+            "sources": [
+                {
+                    "type": "archive",
+                    "url": "https://github.com/giampaolo/psutil/archive/release-5.4.5.tar.gz",
+                    "sha256": "5bf25eff39ba5ba1d00dc94d114012d11b7a6ace62d98943897097d117e0a3f6"
+                }
+            ],
+            "build-commands": [
+                "python3 setup.py build",
+                "python3 setup.py install --prefix /app"
+            ]
+        },
+        {
+            "name": "dropbox",
+            "buildsystem": "simple",
+            "sources": [
+                {
+                    "type": "extra-data",
+                    "filename": "dropbox.tar.gz",
+                    "only-arches": [ "x86_64" ],
+                    "url": "https://clientupdates.dropboxstatic.com/dbx-releng/client/dropbox-lnx.x86_64-50.4.71.tar.gz",
+                    "sha256": "37f623e90a7fcee73573dd64497c8ba85c823f6d4aad8ac425e1d5d114cfd04f",
+                    "size": 114991300,
+                    "x-checker-data": {
+                        "type": "rotating-url",
+                        "url": "https://www.dropbox.com/download?plat=lnx.x86_64"
+                    }
+                },
+                {
+                    "type": "script",
+                    "dest-filename": "apply_extra",
+                    "commands": [
+                        "tar xf dropbox.tar.gz",
+                        "rm -f dropbox.tar.gz",
+                        "chmod a+xr ."
+                    ]
+                }
+            ],
+            "build-commands": [
+                "install apply_extra /app/bin/apply_extra"
+            ]
+        }
+    ]
+}
