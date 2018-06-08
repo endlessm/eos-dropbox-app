@@ -25,7 +25,6 @@ import glob
 import json
 import logging
 import os
-import portallauncher
 import psutil
 import shutil
 import sys
@@ -197,17 +196,6 @@ class DropboxLauncher():
         self._mainloop.quit()
         sys.exit(retcode)
 
-    def _directory_handled(self, unused):
-        # If we own a launcher or a daemon, it means we are the main
-        # instance, and so we need to keep running until it terminates.
-        if self._launcher or self._daemon:
-            return
-
-        # Dropbox launcher already running as a different process,
-        # so we can quit here after having handled the URI request
-        logging.info("Not the main launcher instance. Exiting")
-        self._quit()
-
     def _open_dropbox_directory(self):
         directory = get_dropbox_directory()
         logging.info("Attempting to open Dropbox directory at {}...".format(directory))
@@ -219,8 +207,18 @@ class DropboxLauncher():
             self._exitOnError("{} is not a directory!".format(directory))
 
         path = os.path.expanduser(directory)
-        launcher = portallauncher.PortalLauncher(path, self._directory_handled, None)
-        launcher.run()
+        try:
+            Gio.AppInfo.launch_default_for_uri("file://{}".format(path))
+            logging.info("Dropbox directory opened at {}...".format(directory))
+        except GLib.GError as e:
+            logging.error("Could not open path at {}: {}".format(self._path, e.message))
+            return
+
+        # Check if the launcher is already running as a different process,
+        # in which case we can quit after having handled the URI request.
+        if not self._launcher and not self._daemon:
+            logging.info("Not the main launcher instance. Exiting")
+            self._quit()
 
     def _launch_dropbox(self):
         self._disable_auto_updates()
