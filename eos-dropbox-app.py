@@ -28,7 +28,6 @@ import os
 import psutil
 import shutil
 import sys
-import threading
 
 
 from gi.repository import Gio
@@ -131,14 +130,7 @@ class DropboxLauncher():
         self._dir_monitor = None
         self._bus_owner_id = 0
         self._quit_if_name_lost = False
-
-        # Shell script provider by Dropbox as the unified entry
-        # point to launch the daemon. (class: psutil.Popen).
         self._launcher = None
-
-        # The actual daemon provided by Dropbox that will take over
-        # after the launcher is invoked (class: psutil.Popen).
-        self._daemon = None
 
     def run(self):
         self._try_own_bus_name()
@@ -171,7 +163,7 @@ class DropboxLauncher():
 
     def _name_lost(self, *args):
         if self._quit_if_name_lost:
-            logging.info("Lost the DBus name ownership; quitting...")
+            logging.info("Not the main launcher instance. Exiting")
             self._quit()
             return
 
@@ -182,16 +174,16 @@ class DropboxLauncher():
         else:
             logging.info("Another instance of dropbox is already running")
             self._open_dropbox_when_created()
+            self._quit()
 
     def _exitOnError(self, message):
         logging.error(message)
         self._quit(1)
 
     def _quit(self, retcode=0):
-        if self._launcher:
+        if self._launcher and self._launcher.is_running():
+            logging.info("Terminating dropbox launcher (PID {})".format(self._launcher.pid))
             self._launcher.terminate()
-        if self._daemon:
-            self._daemon.terminate()
 
         self._mainloop.quit()
         sys.exit(retcode)
@@ -214,16 +206,13 @@ class DropboxLauncher():
             logging.error("Could not open path at {}: {}".format(self._path, e.message))
             return
 
-        # Check if the launcher is already running as a different process,
-        # in which case we can quit after having handled the URI request.
-        if not self._launcher and not self._daemon:
-            logging.info("Not the main launcher instance. Exiting")
-            self._quit()
-
     def _launch_dropbox(self):
         self._disable_auto_updates()
+
+        if os.path.exists(os.path.expanduser(DROPBOX_CONFIG)):
+            self._open_dropbox_directory()
+
         self._launch_dropbox_daemon()
-        self._setup_config_monitor()
 
     def _disable_auto_updates(self):
         # We ship updates to the dropbox app ourselves, so disable
@@ -244,54 +233,18 @@ class DropboxLauncher():
         logging.info("Disabling auto-updates by making {} unwritable".format(orig_dir))
         os.mkdir(orig_dir, mode=0)
 
-    def _setup_config_monitor(self):
-        config = Gio.File.new_for_path(os.path.expanduser(os.path.expanduser(DROPBOX_CONFIG)))
-        self._config_monitor = config.monitor(Gio.FileMonitorFlags.NONE)
-        self._config_monitor.connect('changed', self._on_config_changed)
-
-    def _monitorLauncherThreadFunc(self):
-        logging.info("Monitoring launcher with PID {}...".format(self._launcher.pid))
-        # We start the launcher from Dropbox, which internally gets
-        # replaced by another shell script which ends up launching
-        # the actual daemon, so we need to wait for it to finish.
-        if self._launcher.is_running():
-            self._launcher.wait()
-        self._launcher = None
-
-        # Now we can query the process for the actual daemon,
-        # which we need to monitor to know when to quit the app.
-        self._daemon = find_dropbox_daemon()
-        if self._daemon:
-            logging.info("Monitoring daemon with PID {}...".format(self._daemon.pid))
-            self._daemon.wait()
-            self._daemon = None
-        else:
-            logging.warning("Could not find the PID for the dropbox binary. Ignoring...")
-
-        logging.info("Dropbox background service terminated. Quitting the app...")
-        self._quit()
-
     def _launch_dropbox_daemon(self):
         logging.info("Running Dropbox's launcher at {}...".format(DROPBOX_LAUNCHER))
         try:
             self._launcher = psutil.Popen([DROPBOX_LAUNCHER])
-            # Monitor the launcher to make sure we finish the app when needed,
-            # but do it from a separate thread since Popen.wait() is blocking.
-            thread = threading.Thread(target=self._monitorLauncherThreadFunc)
-            thread.start()
         except FileNotFoundError as e:
             self._exitOnError("Can't find launcher script at {}".format(DROPBOX_LAUNCHER))
 
-    def _on_config_changed(self, monitor, file_obj, other_file, event_type):
-        logging.info("Config file monitor {}: {}".format(file_obj.get_path(), event_type))
-        if event_type != Gio.FileMonitorEvent.CHANGES_DONE_HINT:
-            if event_type == Gio.FileMonitorEvent.DELETED and self._dir_monitor:
-                self._dir_monitor.cancel()
-            return
-        self._config_monitor.cancel()
-        if os.path.exists(file_obj.get_path()):
-            logging.info("Configuration for Dropbox created; opening folder when created...")
-            self._open_dropbox_when_created()
+        if self._launcher.is_running():
+            self._launcher.wait()
+
+        logging.info("Dropbox background service terminated. Quitting the app...")
+        self._quit()
 
     def _open_dropbox_when_created(self):
         dropbox_dir = get_dropbox_directory()
