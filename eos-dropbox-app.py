@@ -249,7 +249,20 @@ class DropboxLauncher():
         if self._launcher.is_running():
             self._launcher.wait()
 
-        logging.info("Dropbox background service terminated. Quitting the app...")
+        # In some situations another process for the daemon might get spawned AFTER the
+        # original launcher has quit, so we do an additional check here before quitting
+        # so that the bus name is hold in case a second instance of the app is launched.
+        while True:
+            daemon = find_dropbox_daemon()
+            if daemon:
+                logging.info("A Dropbox daemon still running (PID: {)). Waiting for it to finish..."
+                             .format(daemon.pid))
+                daemon.wait()
+            else:
+                logging.info("Dropbox background service terminated")
+                break
+
+        logging.info("Quitting the app...")
         self._quit()
 
     def _open_dropbox_when_created(self):
