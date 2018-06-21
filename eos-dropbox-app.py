@@ -208,7 +208,7 @@ class DropboxLauncher():
 
         # Check if the launcher is already running as a different process,
         # in which case we can quit after having handled the URI request.
-        if not self._launcher and not self._daemon:
+        if not self._launcher:
             logging.info("Not the main launcher instance. Exiting")
             self._quit()
 
