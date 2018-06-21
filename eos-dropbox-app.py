@@ -25,7 +25,6 @@ import glob
 import json
 import logging
 import os
-import portallauncher
 import psutil
 import shutil
 import sys
@@ -200,8 +199,18 @@ class DropboxLauncher():
             self._exitOnError("{} is not a directory!".format(directory))
 
         path = os.path.expanduser(directory)
-        launcher = portallauncher.PortalLauncher(path, None, None)
-        launcher.run()
+        try:
+            Gio.AppInfo.launch_default_for_uri("file://{}".format(path))
+            logging.info("Dropbox directory opened at {}...".format(directory))
+        except GLib.GError as e:
+            logging.error("Could not open path at {}: {}".format(self._path, e.message))
+            return
+
+        # Check if the launcher is already running as a different process,
+        # in which case we can quit after having handled the URI request.
+        if not self._launcher and not self._daemon:
+            logging.info("Not the main launcher instance. Exiting")
+            self._quit()
 
     def _launch_dropbox(self):
         self._disable_auto_updates()
