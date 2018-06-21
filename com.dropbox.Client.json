@@ -9,14 +9,10 @@
         "/lib/debug"
     ],
     "finish-args": [
-        /* X11 + XShm access */
         "--share=ipc", "--socket=x11",
-        /* Sound and network access */
         "--socket=pulseaudio",
         "--share=network",
-        /* Access the Dropbox directory */
         "--filesystem=home",
-        /* Required for menu items work */
         "--filesystem=/tmp"
     ],
     "modules": [
