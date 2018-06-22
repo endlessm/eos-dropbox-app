@@ -196,7 +196,8 @@ class DropboxLauncher():
             logging.warning("User has not configured Dropbox yet")
             return
         elif not os.path.isdir(directory):
-            self._exitOnError("{} is not a directory!".format(directory))
+            logging.error("{} is not a directory!".format(directory))
+            return
 
         path = os.path.expanduser(directory)
         try:
@@ -205,12 +206,6 @@ class DropboxLauncher():
         except GLib.GError as e:
             logging.error("Could not open path at {}: {}".format(self._path, e.message))
             return
-
-        # Check if the launcher is already running as a different process,
-        # in which case we can quit after having handled the URI request.
-        if not self._launcher:
-            logging.info("Not the main launcher instance. Exiting")
-            self._quit()
 
     def _launch_dropbox(self):
         self._disable_auto_updates()
