@@ -1,5 +1,9 @@
 # eos-dropbox-app
 
+**DEPRECATED**: This repository has now been deprecated in favour of having
+this flatpak application directly built in FlatHub, where development will
+continue. See https://github.com/flathub/com.dropbox.Client for details.
+
 ## Description
 
 This package is used by EOS to package Dropbox as a flatpak, to provide
